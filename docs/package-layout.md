@@ -8,7 +8,7 @@ This document defines the canonical layout for skill source directories and pack
 
 The authoritative location for a skill's source files is:
 
-```
+```text
 skills/<name>/
 ├── SKILL.md        <- agent-readable entrypoint (required)
 ├── VERSION         <- plain-text version string (required)
@@ -41,7 +41,7 @@ The agent-readable entrypoint. This file is what the AI agent reads at runtime w
 
 A plain-text file containing exactly the SemVer version string and a trailing newline. No other content.
 
-```
+```text
 1.5.0
 ```
 
@@ -81,7 +81,7 @@ Optional directory containing test fixtures, expected outputs, or validation scr
 
 A publishable skill package must contain at minimum:
 
-```
+```text
 <name>/
 ├── SKILL.md
 ├── VERSION
@@ -95,7 +95,7 @@ A package missing any of these four files will be rejected by `skpm` during pack
 
 ## Recommended package contents
 
-```
+```text
 <name>/
 ├── SKILL.md
 ├── VERSION
@@ -115,7 +115,7 @@ When `skpm package` runs, it produces an archive (ZIP or TGZ) containing the ski
 
 ### manifest.json
 
-Generated during packaging. Contains a snapshot of the skill metadata and packaging context:
+Generated during packaging. Contains a snapshot of the skill metadata and packaging context. Validated against [`schemas/package-manifest.schema.json`](../schemas/package-manifest.schema.json).
 
 ```json
 {
@@ -131,23 +131,27 @@ Generated during packaging. Contains a snapshot of the skill metadata and packag
 
 ### checksums.txt
 
-Generated during packaging. Contains SHA256 digests for every file in the package:
+Generated during packaging. Contains SHA256 digests for every file in the package.
 
+Format: `<sha256-hex>  <relative-path>` — two spaces between digest and path, compatible with `sha256sum -c`.
+
+```text
+b875cc1f70dfe77f7626fddda0cc7315643d851169cdf09a104d6233e0888ff5  SKILL.md
+a3f9c2e1d4b8f7a6c5e2d9b1f4a7c3e8d6b2f5a9c1e4d7b3f6a2c8e5d1b7f4  VERSION
+d1c2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1  skill.yaml
+e2d3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2  CHANGELOG.md
+f3e4d5c6b7a8f9e0d1c2b3a4f5e6d7c8b9a0f1e2d3c4b5a6f7e8d9c0b1a2f3  README.md
+a4f5e6d7c8b9a0f1e2d3c4b5a6f7e8d9c0b1a2f3e4d5c6b7a8f9e0d1c2b3a4  LICENSE
+b5a6f7e8d9c0b1a2f3e4d5c6b7a8f9e0d1c2b3a4f5e6d7c8b9a0f1e2d3c4b5  manifest.json
 ```
-sha256:abc123...  SKILL.md
-sha256:def456...  VERSION
-sha256:789abc...  skill.yaml
-sha256:012def...  CHANGELOG.md
-sha256:345678...  README.md
-sha256:90abcd...  LICENSE
-sha256:ef0123...  manifest.json
-```
+
+Files are listed in lexicographic order. Tooling must verify each entry using this format.
 
 ---
 
 ## Example packaged artifact
 
-```
+```text
 gitlab-policy-reviewer-1.5.2.zip
 ├── SKILL.md
 ├── VERSION
@@ -197,7 +201,7 @@ Deterministic checksums enable consumers to verify integrity without trusting th
 
 A skill source directory is **not** the same as generated platform output.
 
-```
+```text
 skills/my-skill/              <- canonical source (committed, packaged, published)
 
 .agents/skills/my-skill/      <- generated platform output for generic agents
@@ -215,7 +219,7 @@ Platform output should be committed to the consuming project repository if the t
 ## Tool responsibilities
 
 | Operation | Tool |
-|---|---|
+| --- | --- |
 | Create skill source directory | `skcr` |
 | Render platform output (e.g. `.agents/skills/<name>/SKILL.md`) | `skcr` |
 | Validate skill source against `skill.schema.json` | `skpm` |
@@ -243,13 +247,13 @@ Platform output should be committed to the consuming project repository if the t
 
 Package artifacts follow this naming pattern:
 
-```
+```text
 <name>-<version>.<package_type>
 ```
 
 Examples:
 
-```
+```text
 gitlab-policy-reviewer-1.5.2.zip
 audit-helper-2.0.0-beta.1.tgz
 ```

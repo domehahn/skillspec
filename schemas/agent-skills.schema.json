@@ -53,9 +53,18 @@
     "RegistryConfig": {
       "type": "object",
       "title": "RegistryConfig",
-      "description": "Configuration for a named skill registry.",
-      "required": ["type", "url"],
+      "description": "Configuration for a named skill registry. Remote registries require 'url'. The 'local' type requires 'path' instead.",
+      "required": ["type"],
       "additionalProperties": false,
+      "if": {
+        "properties": { "type": { "const": "local" } }
+      },
+      "then": {
+        "required": ["type", "path"]
+      },
+      "else": {
+        "required": ["type", "url"]
+      },
       "properties": {
         "type": {
           "type": "string",
@@ -129,7 +138,7 @@
         },
         "token_env": {
           "type": "string",
-          "description": "Name of the environment variable holding the bearer token. Used when type is 'bearer'.",
+          "description": "Name of the environment variable holding the bearer token. Used when type is 'bearer' or 'header'.",
           "examples": ["SKILLFORGE_TOKEN", "REGISTRY_TOKEN"]
         },
         "username_env": {
@@ -148,12 +157,20 @@
           "examples": ["X-Api-Key", "Authorization"]
         }
       },
-      "if": {
-        "properties": { "type": { "const": "bearer" } }
-      },
-      "then": {
-        "required": ["token_env"]
-      }
+      "allOf": [
+        {
+          "if": { "properties": { "type": { "const": "bearer" } } },
+          "then": { "required": ["token_env"] }
+        },
+        {
+          "if": { "properties": { "type": { "const": "basic" } } },
+          "then": { "required": ["username_env", "password_env"] }
+        },
+        {
+          "if": { "properties": { "type": { "const": "header" } } },
+          "then": { "required": ["header_name", "token_env"] }
+        }
+      ]
     },
     "SkillEntry": {
       "type": "object",

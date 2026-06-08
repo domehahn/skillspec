@@ -28,7 +28,7 @@
     },
     "version": {
       "type": "string",
-      "description": "Skill version. Must be stable SemVer (MAJOR.MINOR.PATCH) with optional prerelease and build metadata. Must match the VERSION file exactly.",
+      "description": "Skill version following Semantic Versioning. Stable releases use MAJOR.MINOR.PATCH. Pre-release identifiers (e.g. -beta.1) and build metadata (+build.42) are allowed for development and pre-release distribution, but registries and resolvers should prefer stable versions when resolving constraints for production. Must match the VERSION file exactly.",
       "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-((?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\\.(?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\\+([0-9a-zA-Z-]+(?:\\.[0-9a-zA-Z-]+)*))?$",
       "examples": ["1.5.0", "2.0.0-beta.1", "1.0.0+build.42"]
     },
