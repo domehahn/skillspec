@@ -1,0 +1,23 @@
+name: gitlab-policy-reviewer
+namespace: default
+version: 1.5.0
+description: Reviews GitLab security policies and approval policy YAML.
+entrypoint: SKILL.md
+compatible_with:
+  - codex
+  - gitlab-duo
+  - claude-code
+owners:
+  - platform-security
+license: MIT
+tags:
+  - security
+  - gitlab
+  - compliance
+security:
+  requires_network: false
+  requires_secrets: false
+  writes_files: false
+  runs_commands: false
+metadata:
+  maturity: stable

@@ -1,0 +1,959 @@
+openapi: "3.1.0"
+
+info:
+  title: Skill Registry API
+  version: "1"
+  license:
+    name: Apache 2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0
+  description: |
+    Vendor-neutral HTTP API contract for AI agent skill registries.
+
+    This contract is implemented by SkillForge and any compatible registry.
+    The `skpm` SkillForge adapter and `skpm` generic-http adapter conform to this spec.
+
+    All compliant registries must implement:
+      - GET /capabilities (required for client feature negotiation)
+      - GET /skills/{namespace}/{name}/resolve (required for constraint resolution)
+      - GET /skills/{namespace}/{name}/versions/{version}/download (required for install)
+
+    Clients must call /capabilities before performing operations and adapt based
+    on the features reported. Do not assume a feature is available.
+
+    ## Authentication
+    Protected endpoints require a bearer token. Pass it in the Authorization header:
+      Authorization: Bearer <token>
+
+    Tokens are obtained out-of-band (e.g. via skforge login or environment variables).
+
+    ## Versioning
+    This is API version v1. The path prefix /api/v1 is stable for this version.
+    Breaking changes will introduce a new version prefix.
+
+servers:
+  - url: https://skills.example.com/api/v1
+    description: Example registry (replace with your registry URL)
+
+security: []
+
+tags:
+  - name: capabilities
+    description: Registry feature discovery
+  - name: skills
+    description: Skill listing and metadata
+  - name: versions
+    description: Skill version operations
+  - name: artifacts
+    description: Package download and publish
+  - name: governance
+    description: Deprecation and yanking
+
+paths:
+  /capabilities:
+    get:
+      operationId: getCapabilities
+      summary: Get registry capabilities
+      description: |
+        Returns the features supported by this registry. Clients must call this
+        endpoint before other operations and adapt based on reported features.
+        This endpoint must not require authentication.
+      tags: [capabilities]
+      security: []
+      responses:
+        "200":
+          description: Registry capabilities
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CapabilitiesResponse"
+              example:
+                api_version: "v1"
+                features:
+                  resolve: true
+                  download: true
+                  search: true
+                  info: true
+                  list_versions: true
+                  publish: true
+                  deprecate: true
+                  yank: true
+                  unyank: true
+                  semver_constraints: true
+                  checksums: true
+                  signatures: false
+                  provenance: false
+                package_types: ["zip", "tgz"]
+                max_package_size_bytes: 10485760
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /skills:
+    get:
+      operationId: listSkills
+      summary: List and search skills
+      description: |
+        Returns a paginated list of skills. Supports filtering by namespace, tags,
+        and free-text search when the registry has the 'search' capability.
+      tags: [skills]
+      security: []
+      parameters:
+        - name: namespace
+          in: query
+          description: Filter by namespace
+          schema:
+            type: string
+          example: default
+        - name: q
+          in: query
+          description: Full-text search query
+          schema:
+            type: string
+          example: security gitlab
+        - name: tags
+          in: query
+          description: Comma-separated list of tags to filter by
+          schema:
+            type: string
+          example: security,compliance
+        - name: platform
+          in: query
+          description: Filter skills compatible with a specific platform
+          schema:
+            type: string
+          example: claude-code
+        - name: page
+          in: query
+          description: Page number (1-based)
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: per_page
+          in: query
+          description: Results per page
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        "200":
+          description: Paginated list of skills
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, total, page, per_page]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/SkillRef"
+                  total:
+                    type: integer
+                    description: Total number of matching skills
+                  page:
+                    type: integer
+                  per_page:
+                    type: integer
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /skills/{namespace}/{name}:
+    get:
+      operationId: getSkill
+      summary: Get skill info
+      description: Returns metadata about a skill including all known versions.
+      tags: [skills]
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/namespace"
+        - $ref: "#/components/parameters/name"
+      responses:
+        "200":
+          description: Skill metadata
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SkillInfo"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /skills/{namespace}/{name}/versions:
+    get:
+      operationId: listSkillVersions
+      summary: List versions for a skill
+      description: |
+        Returns all published versions of a skill including their status
+        (deprecated, yanked), checksums, and compatibility information.
+      tags: [versions]
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/namespace"
+        - $ref: "#/components/parameters/name"
+        - name: include_yanked
+          in: query
+          description: Include yanked versions in the response
+          schema:
+            type: boolean
+            default: false
+        - name: include_deprecated
+          in: query
+          description: Include deprecated versions in the response
+          schema:
+            type: boolean
+            default: true
+      responses:
+        "200":
+          description: List of versions
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [versions]
+                properties:
+                  versions:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/SkillVersion"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /skills/{namespace}/{name}/resolve:
+    get:
+      operationId: resolveSkill
+      summary: Resolve a version constraint to an exact version
+      description: |
+        Resolves a SemVer constraint expression (e.g. ^1.5.0) to the best matching
+        published, non-yanked version. Returns full artifact metadata suitable for
+        lockfile generation.
+
+        Requires the 'resolve' capability.
+      tags: [versions]
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/namespace"
+        - $ref: "#/components/parameters/name"
+        - name: constraint
+          in: query
+          description: |
+            SemVer constraint expression. Supported forms depend on the registry's
+            'semver_constraints' capability.
+            Examples: ^1.5.0, ~1.5.0, >=1.4.0 <2.0.0, 1.5.0, latest
+          required: false
+          schema:
+            type: string
+          example: "^1.5.0"
+      responses:
+        "200":
+          description: Resolved version with artifact metadata
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResolveResponse"
+              example:
+                namespace: default
+                name: gitlab-policy-reviewer
+                version: "1.5.2"
+                download_url: "https://skills.example.com/api/v1/skills/default/gitlab-policy-reviewer/versions/1.5.2/download"
+                sha256: "b875cc1f70dfe77f7626fddda0cc7315643d851169cdf09a104d6233e0888ff5"
+                package_type: zip
+                artifact: "gitlab-policy-reviewer-1.5.2.zip"
+                compatible_with:
+                  - codex
+                  - gitlab-duo
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /skills/{namespace}/{name}/versions/{version}:
+    get:
+      operationId: getSkillVersion
+      summary: Get metadata for a specific version
+      description: Returns full metadata for one published version of a skill.
+      tags: [versions]
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/namespace"
+        - $ref: "#/components/parameters/name"
+        - $ref: "#/components/parameters/version"
+      responses:
+        "200":
+          description: Version metadata
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SkillVersion"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+    put:
+      operationId: publishSkillVersion
+      summary: Publish a new skill version
+      description: |
+        Uploads a packaged skill artifact and registers it as a new version.
+        The version must not already exist (immutable versioning).
+
+        Requires authentication. Requires the 'publish' capability.
+      tags: [artifacts]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/namespace"
+        - $ref: "#/components/parameters/name"
+        - $ref: "#/components/parameters/version"
+      requestBody:
+        required: true
+        description: Binary skill package artifact (ZIP or TGZ)
+        content:
+          application/zip:
+            schema:
+              type: string
+              format: binary
+          application/x-tar:
+            schema:
+              type: string
+              format: binary
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+      responses:
+        "201":
+          description: Version published successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublishResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "413":
+          description: Package exceeds maximum allowed size
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /skills/{namespace}/{name}/versions/{version}/download:
+    get:
+      operationId: downloadSkillVersion
+      summary: Download a skill package artifact
+      description: |
+        Returns the binary package artifact for the specified version.
+        Clients must verify the SHA256 digest after downloading.
+
+        Yanked versions may be unavailable or restricted depending on registry policy.
+      tags: [artifacts]
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/namespace"
+        - $ref: "#/components/parameters/name"
+        - $ref: "#/components/parameters/version"
+      responses:
+        "200":
+          description: Package artifact binary
+          headers:
+            Content-Disposition:
+              schema:
+                type: string
+              example: 'attachment; filename="gitlab-policy-reviewer-1.5.2.zip"'
+            X-Checksum-SHA256:
+              schema:
+                type: string
+              description: SHA256 hex digest of the artifact body
+              example: "b875cc1f70dfe77f7626fddda0cc7315643d851169cdf09a104d6233e0888ff5"
+          content:
+            application/zip:
+              schema:
+                type: string
+                format: binary
+            application/x-tar:
+              schema:
+                type: string
+                format: binary
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "410":
+          description: Version has been yanked and is no longer downloadable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /skills/{namespace}/{name}/versions/{version}/deprecate:
+    post:
+      operationId: deprecateSkillVersion
+      summary: Deprecate a skill version
+      description: |
+        Marks a version as deprecated. Deprecated versions remain downloadable
+        but resolvers will prefer non-deprecated versions and warn consumers.
+        Deprecation does not remove the artifact.
+
+        Requires authentication. Requires the 'deprecate' capability.
+      tags: [governance]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/namespace"
+        - $ref: "#/components/parameters/name"
+        - $ref: "#/components/parameters/version"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GovernanceRequest"
+            example:
+              reason: "Use 1.5.3 instead. This version contains a known policy edge case."
+      responses:
+        "200":
+          description: Version deprecated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SkillVersion"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /skills/{namespace}/{name}/versions/{version}/yank:
+    post:
+      operationId: yankSkillVersion
+      summary: Yank a skill version
+      description: |
+        Yanks a version, preventing it from being resolved by new installs.
+        Yanked versions may still be downloaded by consumers who have already
+        pinned the version in their lockfile, depending on registry policy.
+        Yanking should be reserved for security incidents or critical defects.
+
+        Requires authentication. Requires the 'yank' capability.
+      tags: [governance]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/namespace"
+        - $ref: "#/components/parameters/name"
+        - $ref: "#/components/parameters/version"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GovernanceRequest"
+            example:
+              reason: "Critical security defect. Do not use. See advisory SKILL-2024-001."
+      responses:
+        "200":
+          description: Version yanked
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SkillVersion"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /skills/{namespace}/{name}/versions/{version}/unyank:
+    post:
+      operationId: unyankSkillVersion
+      summary: Unyank a skill version
+      description: |
+        Reverses a yank, making the version available for resolution again.
+        Use only when the reason for yanking has been resolved.
+
+        Requires authentication. Requires the 'unyank' capability.
+      tags: [governance]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/namespace"
+        - $ref: "#/components/parameters/name"
+        - $ref: "#/components/parameters/version"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GovernanceRequest"
+            example:
+              reason: "Yank was applied in error. Version is safe."
+      responses:
+        "200":
+          description: Version unyanked
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SkillVersion"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: Bearer token obtained via registry authentication (e.g. skforge login)
+
+  parameters:
+    namespace:
+      name: namespace
+      in: path
+      required: true
+      description: Skill namespace
+      schema:
+        type: string
+        pattern: "^[a-z0-9]+(?:[._-][a-z0-9]+)*$"
+      example: default
+
+    name:
+      name: name
+      in: path
+      required: true
+      description: Skill name
+      schema:
+        type: string
+        pattern: "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+      example: gitlab-policy-reviewer
+
+    version:
+      name: version
+      in: path
+      required: true
+      description: Exact SemVer version
+      schema:
+        type: string
+        pattern: "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-((?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\\.(?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\\+([0-9a-zA-Z-]+(?:\\.[0-9a-zA-Z-]+)*))?$"
+      example: "1.5.2"
+
+  responses:
+    BadRequest:
+      description: Invalid request parameters
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            error: bad_request
+            message: "Invalid namespace format"
+
+    Unauthorized:
+      description: Authentication required
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            error: unauthorized
+            message: "Bearer token required"
+
+    Forbidden:
+      description: Authenticated but not authorized for this operation
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            error: forbidden
+            message: "You do not have permission to publish to this namespace"
+
+    NotFound:
+      description: Skill or version not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            error: not_found
+            message: "Skill 'default/gitlab-policy-reviewer' not found"
+
+    Conflict:
+      description: Version already exists (versions are immutable)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            error: conflict
+            message: "Version 1.5.2 already exists and cannot be overwritten"
+
+    ValidationFailed:
+      description: Request was valid HTTP but failed semantic validation
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            error: validation_failed
+            message: "skill.yaml version '1.5.2' does not match path version '1.5.3'"
+
+    InternalError:
+      description: Unexpected server error
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            error: internal_error
+            message: "An unexpected error occurred"
+
+  schemas:
+    CapabilitiesResponse:
+      type: object
+      title: CapabilitiesResponse
+      description: Registry feature declarations. Clients adapt based on this response.
+      required: [api_version, features]
+      properties:
+        api_version:
+          type: string
+          description: API version implemented by this registry.
+          example: "v1"
+        features:
+          type: object
+          description: Feature flags. Clients must not assume a feature is available unless it is true here.
+          required:
+            - resolve
+            - download
+            - search
+            - info
+            - list_versions
+            - publish
+            - deprecate
+            - yank
+            - unyank
+            - semver_constraints
+            - checksums
+          properties:
+            resolve:
+              type: boolean
+              description: Registry supports constraint resolution via /resolve
+            download:
+              type: boolean
+              description: Registry serves downloadable package artifacts
+            search:
+              type: boolean
+              description: Registry supports full-text search in /skills
+            info:
+              type: boolean
+              description: Registry supports /skills/{ns}/{name} info endpoint
+            list_versions:
+              type: boolean
+              description: Registry supports /skills/{ns}/{name}/versions endpoint
+            publish:
+              type: boolean
+              description: Registry accepts artifact uploads via PUT
+            deprecate:
+              type: boolean
+              description: Registry supports deprecate governance endpoint
+            yank:
+              type: boolean
+              description: Registry supports yank governance endpoint
+            unyank:
+              type: boolean
+              description: Registry supports unyank governance endpoint
+            semver_constraints:
+              type: boolean
+              description: Resolve endpoint supports SemVer range expressions (not just exact versions)
+            checksums:
+              type: boolean
+              description: Registry provides SHA256 checksums in responses
+            signatures:
+              type: boolean
+              description: Registry provides cryptographic artifact signatures
+            provenance:
+              type: boolean
+              description: Registry provides SLSA or equivalent provenance attestations
+        package_types:
+          type: array
+          description: Archive formats this registry accepts and serves.
+          items:
+            type: string
+            enum: [zip, tgz]
+          uniqueItems: true
+          example: ["zip", "tgz"]
+        max_package_size_bytes:
+          type: integer
+          description: Maximum package size in bytes. Absent if not enforced.
+          example: 10485760
+
+    SkillRef:
+      type: object
+      title: SkillRef
+      description: Minimal skill reference used in list responses.
+      required: [namespace, name, latest_version]
+      properties:
+        namespace:
+          type: string
+          example: default
+        name:
+          type: string
+          example: gitlab-policy-reviewer
+        latest_version:
+          type: string
+          example: "1.5.2"
+        description:
+          type: string
+          example: "Reviews GitLab security policies and approval policy YAML."
+        tags:
+          type: array
+          items:
+            type: string
+          uniqueItems: true
+          example: ["security", "gitlab"]
+
+    SkillInfo:
+      type: object
+      title: SkillInfo
+      description: Full skill metadata including version list.
+      required: [namespace, name, latest_version, versions]
+      properties:
+        namespace:
+          type: string
+          example: default
+        name:
+          type: string
+          example: gitlab-policy-reviewer
+        latest_version:
+          type: string
+          example: "1.5.2"
+        description:
+          type: string
+          example: "Reviews GitLab security policies and approval policy YAML."
+        tags:
+          type: array
+          items:
+            type: string
+          uniqueItems: true
+        owners:
+          type: array
+          items:
+            type: string
+          uniqueItems: true
+        license:
+          type: string
+          example: MIT
+        compatible_with:
+          type: array
+          items:
+            type: string
+          uniqueItems: true
+          example: ["codex", "gitlab-duo"]
+        versions:
+          type: array
+          items:
+            $ref: "#/components/schemas/SkillVersion"
+        deprecated:
+          type: boolean
+          description: True if the latest version is deprecated
+        yanked:
+          type: boolean
+          description: True if the latest version is yanked
+
+    SkillVersion:
+      type: object
+      title: SkillVersion
+      description: Metadata for one published version of a skill.
+      required: [namespace, name, version, sha256, package_type, created_at]
+      properties:
+        namespace:
+          type: string
+          example: default
+        name:
+          type: string
+          example: gitlab-policy-reviewer
+        version:
+          type: string
+          example: "1.5.2"
+        sha256:
+          type: string
+          pattern: "^[0-9a-f]{64}$"
+          example: "b875cc1f70dfe77f7626fddda0cc7315643d851169cdf09a104d6233e0888ff5"
+        package_type:
+          type: string
+          enum: [zip, tgz]
+          example: zip
+        artifact:
+          type: string
+          example: "gitlab-policy-reviewer-1.5.2.zip"
+        download_url:
+          type: string
+          format: uri
+          example: "https://skills.example.com/api/v1/skills/default/gitlab-policy-reviewer/versions/1.5.2/download"
+        compatible_with:
+          type: array
+          items:
+            type: string
+          uniqueItems: true
+          example: ["codex", "gitlab-duo"]
+        deprecated:
+          type: boolean
+          default: false
+        deprecated_reason:
+          type: string
+          example: "Use 1.5.3 instead."
+        yanked:
+          type: boolean
+          default: false
+        yanked_reason:
+          type: string
+          example: "Critical security defect."
+        created_at:
+          type: string
+          format: date-time
+          example: "2024-03-15T14:30:00Z"
+        signature:
+          type: string
+          description: Cryptographic signature over the artifact, if available.
+        provenance:
+          type: string
+          description: URI to SLSA or equivalent provenance attestation, if available.
+
+    ResolveResponse:
+      type: object
+      title: ResolveResponse
+      description: Resolved version suitable for lockfile generation.
+      required: [namespace, name, version, sha256, package_type, download_url, artifact]
+      properties:
+        namespace:
+          type: string
+          example: default
+        name:
+          type: string
+          example: gitlab-policy-reviewer
+        version:
+          type: string
+          description: Resolved exact SemVer version.
+          example: "1.5.2"
+        download_url:
+          type: string
+          format: uri
+          example: "https://skills.example.com/api/v1/skills/default/gitlab-policy-reviewer/versions/1.5.2/download"
+        sha256:
+          type: string
+          pattern: "^[0-9a-f]{64}$"
+          example: "b875cc1f70dfe77f7626fddda0cc7315643d851169cdf09a104d6233e0888ff5"
+        package_type:
+          type: string
+          enum: [zip, tgz]
+          example: zip
+        artifact:
+          type: string
+          example: "gitlab-policy-reviewer-1.5.2.zip"
+        compatible_with:
+          type: array
+          items:
+            type: string
+          uniqueItems: true
+          example: ["codex", "gitlab-duo"]
+
+    PublishResponse:
+      type: object
+      title: PublishResponse
+      description: Response returned after a successful artifact publish.
+      required: [namespace, name, version, sha256, package_type, artifact]
+      properties:
+        namespace:
+          type: string
+        name:
+          type: string
+        version:
+          type: string
+        sha256:
+          type: string
+          pattern: "^[0-9a-f]{64}$"
+        package_type:
+          type: string
+          enum: [zip, tgz]
+        artifact:
+          type: string
+        download_url:
+          type: string
+          format: uri
+        created_at:
+          type: string
+          format: date-time
+
+    GovernanceRequest:
+      type: object
+      title: GovernanceRequest
+      description: Request body for deprecate, yank, and unyank operations.
+      properties:
+        reason:
+          type: string
+          description: Human-readable reason for the governance action. Strongly recommended.
+          minLength: 1
+          example: "Use 1.5.3 instead."
+
+    ErrorResponse:
+      type: object
+      title: ErrorResponse
+      description: Standard error response body.
+      required: [error, message]
+      properties:
+        error:
+          type: string
+          description: Machine-readable error code.
+          enum:
+            - bad_request
+            - unauthorized
+            - forbidden
+            - not_found
+            - conflict
+            - validation_failed
+            - internal_error
+          example: not_found
+        message:
+          type: string
+          description: Human-readable error description.
+          example: "Skill 'default/gitlab-policy-reviewer' not found"
+        details:
+          type: object
+          description: Optional additional structured error context.

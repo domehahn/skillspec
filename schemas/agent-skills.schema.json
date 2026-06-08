@@ -1,0 +1,275 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://skillspec.dev/schemas/agent-skills.schema.json",
+  "title": "AgentSkillsManifest",
+  "description": "Project-level manifest declaring desired skills, version constraints, registries, and install targets. Managed by skpm. Committed to the consuming project repository.",
+  "type": "object",
+  "required": ["version", "skills"],
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "type": "integer",
+      "description": "Manifest format version. Must be 1 for this schema.",
+      "const": 1
+    },
+    "default_registry": {
+      "type": "string",
+      "description": "Name of the registry to use when a skill entry does not specify a 'source'. Must match a key under 'registries'.",
+      "minLength": 1,
+      "examples": ["company-skillforge"]
+    },
+    "registries": {
+      "type": "object",
+      "description": "Named registry configurations. Keys are registry names referenced by skill 'source' fields and 'default_registry'.",
+      "additionalProperties": {
+        "$ref": "#/$defs/RegistryConfig"
+      },
+      "examples": [
+        {
+          "company-skillforge": {
+            "type": "skillforge",
+            "url": "https://skills.example.com",
+            "auth": {
+              "type": "bearer",
+              "token_env": "SKILLFORGE_TOKEN"
+            }
+          }
+        }
+      ]
+    },
+    "skills": {
+      "type": "array",
+      "description": "Desired skills for this project. Each entry declares a skill, its version constraint, source registry, and install target.",
+      "items": {
+        "$ref": "#/$defs/SkillEntry"
+      }
+    },
+    "metadata": {
+      "type": "object",
+      "description": "Freeform extension metadata for the manifest. Not validated beyond being an object."
+    }
+  },
+  "$defs": {
+    "RegistryConfig": {
+      "type": "object",
+      "title": "RegistryConfig",
+      "description": "Configuration for a named skill registry.",
+      "required": ["type", "url"],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "type": "string",
+          "description": "Registry adapter type.",
+          "enum": [
+            "skillforge",
+            "artifactory",
+            "gitlab",
+            "github",
+            "local",
+            "generic-http"
+          ]
+        },
+        "url": {
+          "type": "string",
+          "description": "Base URL of the registry.",
+          "format": "uri",
+          "examples": ["https://skills.example.com", "https://artifactory.example.com/artifactory"]
+        },
+        "repo": {
+          "type": "string",
+          "description": "Repository or path within the registry host. Used by Artifactory and similar.",
+          "examples": ["agent-skills"]
+        },
+        "project": {
+          "type": "string",
+          "description": "Project identifier within the registry. Used by GitLab package registries.",
+          "examples": ["platform/skills"]
+        },
+        "path": {
+          "type": "string",
+          "description": "Filesystem path for local registry type.",
+          "examples": ["/opt/skills", "./local-registry"]
+        },
+        "auth": {
+          "$ref": "#/$defs/RegistryAuth"
+        },
+        "headers": {
+          "type": "object",
+          "description": "Additional HTTP headers to include in requests to this registry. Values should be static strings. For secret values, use auth instead.",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "examples": [{"X-Custom-Header": "value"}]
+        },
+        "endpoints": {
+          "type": "object",
+          "description": "Override specific API endpoint paths for non-standard registry deployments.",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "examples": [{"capabilities": "/api/v1/capabilities", "resolve": "/api/v1/skills/{namespace}/{name}/resolve"}]
+        },
+        "metadata": {
+          "type": "object",
+          "description": "Freeform extension metadata for this registry config."
+        }
+      }
+    },
+    "RegistryAuth": {
+      "type": "object",
+      "title": "RegistryAuth",
+      "description": "Authentication configuration for a registry. Credentials must be stored in environment variables, not in this file.",
+      "required": ["type"],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "type": "string",
+          "description": "Authentication scheme.",
+          "enum": ["none", "bearer", "basic", "header"]
+        },
+        "token_env": {
+          "type": "string",
+          "description": "Name of the environment variable holding the bearer token. Used when type is 'bearer'.",
+          "examples": ["SKILLFORGE_TOKEN", "REGISTRY_TOKEN"]
+        },
+        "username_env": {
+          "type": "string",
+          "description": "Name of the environment variable holding the username. Used when type is 'basic'.",
+          "examples": ["REGISTRY_USERNAME"]
+        },
+        "password_env": {
+          "type": "string",
+          "description": "Name of the environment variable holding the password. Used when type is 'basic'.",
+          "examples": ["REGISTRY_PASSWORD"]
+        },
+        "header_name": {
+          "type": "string",
+          "description": "HTTP header name to send the credential in. Used when type is 'header'.",
+          "examples": ["X-Api-Key", "Authorization"]
+        }
+      },
+      "if": {
+        "properties": { "type": { "const": "bearer" } }
+      },
+      "then": {
+        "required": ["token_env"]
+      }
+    },
+    "SkillEntry": {
+      "type": "object",
+      "title": "SkillEntry",
+      "description": "A desired skill in the project manifest.",
+      "required": ["name"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Skill name. Must match the pattern in skill.schema.json.",
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+          "examples": ["gitlab-policy-reviewer"]
+        },
+        "namespace": {
+          "type": "string",
+          "description": "Skill namespace. Defaults to 'default' when omitted.",
+          "pattern": "^[a-z0-9]+(?:[._-][a-z0-9]+)*$",
+          "default": "default",
+          "examples": ["default", "platform-security"]
+        },
+        "version": {
+          "type": "string",
+          "description": "Version constraint for this skill. Accepts exact SemVer or constraint expressions. 'latest' is allowed for local experiments but must not be committed for production use.",
+          "examples": [
+            "1.5.0",
+            "^1.5.0",
+            "~1.5.0",
+            ">=1.4.0 <2.0.0",
+            "latest"
+          ]
+        },
+        "source": {
+          "type": "string",
+          "description": "Registry name from 'registries' to install this skill from. Falls back to 'default_registry' when omitted.",
+          "minLength": 1,
+          "examples": ["company-skillforge", "public-registry"]
+        },
+        "target": {
+          "type": "string",
+          "description": "Filesystem path where the skill should be installed in the consuming project.",
+          "examples": [".agents/skills/gitlab-policy-reviewer", ".claude/skills/gitlab-policy-reviewer"]
+        },
+        "platforms": {
+          "type": "array",
+          "description": "Platforms to generate output for during install. Must use canonical platform names.",
+          "items": {
+            "type": "string",
+            "enum": [
+              "codex",
+              "claude-code",
+              "gitlab-duo",
+              "github-copilot",
+              "cursor",
+              "windsurf",
+              "openhands",
+              "opencode",
+              "ollama",
+              "generic",
+              "all"
+            ]
+          },
+          "uniqueItems": true,
+          "examples": [["codex", "gitlab-duo"]]
+        },
+        "path": {
+          "type": "string",
+          "description": "Local filesystem path to the skill source for monorepo or local development scenarios. Mutually exclusive with 'source' in intent, but both may be present for fallback.",
+          "examples": ["./skills/gitlab-policy-reviewer", "../shared-skills/audit-helper"]
+        },
+        "ref": {
+          "type": "string",
+          "description": "Git commit, branch, or tag reference. Supported by registry adapters that resolve from Git (e.g. gitlab, github).",
+          "examples": ["main", "v1.5.0", "abc1234def5678"]
+        },
+        "metadata": {
+          "type": "object",
+          "description": "Freeform extension metadata for this skill entry."
+        }
+      }
+    }
+  },
+  "examples": [
+    {
+      "version": 1,
+      "default_registry": "company-skillforge",
+      "registries": {
+        "company-skillforge": {
+          "type": "skillforge",
+          "url": "https://skills.example.com",
+          "auth": {
+            "type": "bearer",
+            "token_env": "SKILLFORGE_TOKEN"
+          }
+        },
+        "company-artifactory": {
+          "type": "artifactory",
+          "url": "https://artifactory.example.com/artifactory",
+          "repo": "agent-skills",
+          "auth": {
+            "type": "basic",
+            "username_env": "ARTIFACTORY_USER",
+            "password_env": "ARTIFACTORY_PASSWORD"
+          }
+        }
+      },
+      "skills": [
+        {
+          "namespace": "default",
+          "name": "gitlab-policy-reviewer",
+          "version": "^1.5.0",
+          "source": "company-skillforge",
+          "target": ".agents/skills/gitlab-policy-reviewer",
+          "platforms": ["codex", "gitlab-duo"]
+        }
+      ]
+    }
+  ]
+}

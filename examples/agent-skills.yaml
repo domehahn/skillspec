@@ -1,0 +1,38 @@
+version: 1
+default_registry: company-skillforge
+
+registries:
+  company-skillforge:
+    type: skillforge
+    url: https://skills.example.com
+    auth:
+      type: bearer
+      token_env: SKILLFORGE_TOKEN
+
+  company-artifactory:
+    type: artifactory
+    url: https://artifactory.example.com/artifactory
+    repo: agent-skills
+    auth:
+      type: basic
+      username_env: ARTIFACTORY_USER
+      password_env: ARTIFACTORY_PASSWORD
+
+skills:
+  - namespace: default
+    name: gitlab-policy-reviewer
+    version: ^1.5.0
+    source: company-skillforge
+    target: .agents/skills/gitlab-policy-reviewer
+    platforms:
+      - codex
+      - gitlab-duo
+
+  - namespace: default
+    name: dependency-audit
+    version: ~2.1.0
+    source: company-skillforge
+    platforms:
+      - codex
+      - claude-code
+      - github-copilot

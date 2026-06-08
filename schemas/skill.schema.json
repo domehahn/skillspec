@@ -1,0 +1,177 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://skillspec.dev/schemas/skill.schema.json",
+  "title": "Skill",
+  "description": "Metadata for a single AI agent skill. Validated from skill.yaml in the canonical skill source directory.",
+  "type": "object",
+  "required": [
+    "name",
+    "version",
+    "description",
+    "compatible_with",
+    "entrypoint"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Unique skill name within its namespace. Lowercase alphanumeric words separated by hyphens.",
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+      "examples": ["gitlab-policy-reviewer", "code-review", "dependency-audit"]
+    },
+    "namespace": {
+      "type": "string",
+      "description": "Logical grouping namespace. Defaults to 'default' when omitted. Lowercase alphanumeric words separated by dots, underscores, or hyphens.",
+      "pattern": "^[a-z0-9]+(?:[._-][a-z0-9]+)*$",
+      "default": "default",
+      "examples": ["default", "platform-security", "acme.tools"]
+    },
+    "version": {
+      "type": "string",
+      "description": "Skill version. Must be stable SemVer (MAJOR.MINOR.PATCH) with optional prerelease and build metadata. Must match the VERSION file exactly.",
+      "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-((?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\\.(?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\\+([0-9a-zA-Z-]+(?:\\.[0-9a-zA-Z-]+)*))?$",
+      "examples": ["1.5.0", "2.0.0-beta.1", "1.0.0+build.42"]
+    },
+    "description": {
+      "type": "string",
+      "description": "Short human-readable description of what the skill does. Must be non-empty.",
+      "minLength": 1,
+      "examples": ["Reviews GitLab security policies and approval policy YAML."]
+    },
+    "compatible_with": {
+      "type": "array",
+      "description": "List of agent platforms this skill is compatible with. Must contain at least one entry. Use 'all' to indicate universal compatibility.",
+      "items": {
+        "type": "string",
+        "enum": [
+          "codex",
+          "claude-code",
+          "gitlab-duo",
+          "github-copilot",
+          "cursor",
+          "windsurf",
+          "openhands",
+          "opencode",
+          "ollama",
+          "generic",
+          "all"
+        ]
+      },
+      "minItems": 1,
+      "uniqueItems": true,
+      "examples": [
+        ["codex", "claude-code"],
+        ["all"],
+        ["gitlab-duo", "github-copilot"]
+      ]
+    },
+    "entrypoint": {
+      "type": "string",
+      "description": "Relative path to the agent-readable entrypoint file within the skill package. Conventionally 'SKILL.md'.",
+      "minLength": 1,
+      "examples": ["SKILL.md"]
+    },
+    "owners": {
+      "type": "array",
+      "description": "Team or individual identifiers responsible for maintaining this skill.",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true,
+      "examples": [["platform-security"], ["alice", "platform-team"]]
+    },
+    "license": {
+      "type": "string",
+      "description": "SPDX license expression for the skill. See https://spdx.org/licenses/",
+      "examples": ["MIT", "Apache-2.0", "GPL-3.0-only", "UNLICENSED"]
+    },
+    "tags": {
+      "type": "array",
+      "description": "Searchable tags for the skill. Lowercase preferred.",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true,
+      "examples": [["security", "gitlab", "compliance"]]
+    },
+    "security": {
+      "type": "object",
+      "description": "Declarations about the skill's security posture. Used by orchestrators to gate skill execution.",
+      "additionalProperties": false,
+      "properties": {
+        "requires_network": {
+          "type": "boolean",
+          "description": "True if the skill requires outbound network access during execution.",
+          "default": false
+        },
+        "requires_secrets": {
+          "type": "boolean",
+          "description": "True if the skill requires access to secrets or credentials.",
+          "default": false
+        },
+        "writes_files": {
+          "type": "boolean",
+          "description": "True if the skill writes files to disk beyond its own workspace.",
+          "default": false
+        },
+        "runs_commands": {
+          "type": "boolean",
+          "description": "True if the skill executes shell commands or subprocesses.",
+          "default": false
+        }
+      },
+      "examples": [
+        {
+          "requires_network": false,
+          "requires_secrets": false,
+          "writes_files": false,
+          "runs_commands": false
+        },
+        {
+          "requires_network": true,
+          "requires_secrets": true,
+          "writes_files": false,
+          "runs_commands": false
+        }
+      ]
+    },
+    "metadata": {
+      "type": "object",
+      "description": "Freeform extension metadata. Not validated beyond being an object. Use for tool-specific or org-specific fields that do not belong in the core schema.",
+      "examples": [
+        {
+          "maturity": "experimental"
+        },
+        {
+          "maturity": "stable",
+          "team_channel": "#platform-security",
+          "review_frequency": "quarterly"
+        }
+      ]
+    }
+  },
+  "examples": [
+    {
+      "name": "gitlab-policy-reviewer",
+      "namespace": "default",
+      "version": "1.5.0",
+      "description": "Reviews GitLab security policies and approval policy YAML.",
+      "entrypoint": "SKILL.md",
+      "compatible_with": ["codex", "gitlab-duo", "claude-code"],
+      "owners": ["platform-security"],
+      "license": "MIT",
+      "tags": ["security", "gitlab", "compliance"],
+      "security": {
+        "requires_network": false,
+        "requires_secrets": false,
+        "writes_files": false,
+        "runs_commands": false
+      },
+      "metadata": {
+        "maturity": "stable"
+      }
+    }
+  ]
+}

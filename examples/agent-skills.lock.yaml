@@ -1,0 +1,38 @@
+version: 1
+generated_by: skpm
+
+skills:
+  - namespace: default
+    name: gitlab-policy-reviewer
+    version: 1.5.2
+    constraint: ^1.5.0
+    source: company-skillforge
+    registry_type: skillforge
+    registry_url: https://skills.example.com
+    artifact: gitlab-policy-reviewer-1.5.2.zip
+    download_url: https://skills.example.com/api/v1/skills/default/gitlab-policy-reviewer/versions/1.5.2/download
+    sha256: b875cc1f70dfe77f7626fddda0cc7315643d851169cdf09a104d6233e0888ff5
+    package_type: zip
+    compatible_with:
+      - codex
+      - gitlab-duo
+    installed_to:
+      - .agents/skills/gitlab-policy-reviewer
+
+  - namespace: default
+    name: dependency-audit
+    version: 2.1.3
+    constraint: ~2.1.0
+    source: company-skillforge
+    registry_type: skillforge
+    registry_url: https://skills.example.com
+    artifact: dependency-audit-2.1.3.zip
+    download_url: https://skills.example.com/api/v1/skills/default/dependency-audit/versions/2.1.3/download
+    sha256: a3f9c2e1d4b8f7a6c5e2d9b1f4a7c3e8d6b2f5a9c1e4d7b3f6a2c8e5d1b7f4a
+    package_type: zip
+    compatible_with:
+      - codex
+      - claude-code
+      - github-copilot
+    installed_to:
+      - .agents/skills/dependency-audit
