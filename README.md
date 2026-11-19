@@ -1,5 +1,9 @@
 # skillspec
 
+[![CI](https://github.com/domehahn/skillspec/actions/workflows/validate.yaml/badge.svg)](https://github.com/domehahn/skillspec/actions/workflows/validate.yaml)
+[![License](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/domehahn/skillspec/blob/main/LICENSE)
+[![Status: Specification](https://img.shields.io/badge/Status-Specification-brightgreen.svg)](https://github.com/domehahn/skillspec)
+
 `skillspec` is the vendor-neutral specification package for AI Agent Skills. It defines the common schemas, package layout rules, lockfile format, registry API contract, and compatibility conventions shared by the `skcr`, `skpm`, SkillForge, and `skforge` toolchain.
 
 This repository contains no implementation code. It is specification-first.
